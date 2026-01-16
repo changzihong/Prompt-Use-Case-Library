@@ -1,0 +1,104 @@
+import { useState, useEffect } from 'react';
+import PromptCard from '../components/PromptCard';
+import type { PromptCard as PromptCardType } from '../types/index';
+import { Search, Filter, Sparkles } from 'lucide-react';
+
+const MOCK_CARDS: PromptCardType[] = [
+    {
+        id: '1',
+        title: 'Customer Support Assistant',
+        useCase: 'Helping customers with common inquiries about their orders and shipping status.',
+        prompt: 'You are a helpful customer support agent...',
+        tags: ['support', 'customer-service', 'automation'],
+        authorId: 'user1',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+        viewCount: 154,
+        avgRating: 4.8,
+        ratingCount: 12
+    },
+    {
+        id: '2',
+        title: 'Code Refactoring Expert',
+        useCase: 'Takes messy legacy code and converts it into clean, documented TypeScript.',
+        prompt: 'Refactor the following code for better readability...',
+        tags: ['coding', 'typescript', 'clean-code'],
+        authorId: 'user2',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+        viewCount: 89,
+        avgRating: 4.5,
+        ratingCount: 8
+    },
+    {
+        id: '3',
+        title: 'Market Research Summarizer',
+        useCase: 'Analyzes long market reports and extracts key insights for stakeholders.',
+        prompt: 'Summarize the following market research report...',
+        tags: ['research', 'business', 'summary'],
+        authorId: 'user3',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000).toISOString(),
+        viewCount: 230,
+        avgRating: 4.9,
+        ratingCount: 20
+    }
+];
+
+const Home = () => {
+    const [cards, setCards] = useState<PromptCardType[]>(MOCK_CARDS);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    return (
+        <div className="fade-in">
+            <section style={{ marginBottom: '48px', textAlign: 'center' }}>
+                <h1 style={{ fontSize: '3rem', marginBottom: '16px', fontWeight: '800' }}>
+                    Explore the <span style={{ color: 'var(--primary)' }}>Prompt Library</span>
+                </h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1.25rem', maxWidth: '700px', margin: '0 auto' }}>
+                    Discover, share, and rate the best AI prompts used by our team to solve real-world problems.
+                </p>
+            </section>
+
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '40px', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                    <Search size={20} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                    <input
+                        type="text"
+                        placeholder="Search prompts, use cases, or tags..."
+                        className="glass-input"
+                        style={{ width: '100%', paddingLeft: '48px' }}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <button className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Filter size={18} />
+                    <span>Filters</span>
+                </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '32px' }}>
+                <button className="badge badge-primary" style={{ border: 'none', cursor: 'pointer' }}>All Departments</button>
+                <button className="badge" style={{ border: 'none', cursor: 'pointer', background: 'var(--glass-bg)', color: 'var(--text-secondary)' }}>Marketing</button>
+                <button className="badge" style={{ border: 'none', cursor: 'pointer', background: 'var(--glass-bg)', color: 'var(--text-secondary)' }}>Engineering</button>
+                <button className="badge" style={{ border: 'none', cursor: 'pointer', background: 'var(--glass-bg)', color: 'var(--text-secondary)' }}>Sales</button>
+            </div>
+
+            <div className="grid grid-cols-3">
+                {cards.map(card => (
+                    <PromptCard key={card.id} card={card} />
+                ))}
+            </div>
+
+            {cards.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-secondary)' }}>
+                    <Sparkles size={48} opacity={0.3} style={{ marginBottom: '16px' }} />
+                    <p>No prompts found. Be the first to share one!</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default Home;
