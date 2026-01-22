@@ -1,37 +1,62 @@
 import { useState, useEffect } from 'react';
 import PromptCard from '../components/PromptCard';
 import type { PromptCard as PromptCardType } from '../types';
-import { Search, Sparkles, Loader2, X, ChevronDown, TrendingUp, Star, MessageSquare, Calendar } from 'lucide-react';
+import { Search, Loader2, ChevronDown, TrendingUp, Star, MessageSquare, Calendar, Shield } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useSession } from '../context/SessionContext';
+import { useAuth } from '../context/AuthContext';
+import JoinSessionForm from '../components/JoinSessionForm';
 
 interface HomeProps {
-    aiFilterIds: string[];
-    isAiFiltering: boolean;
     searchTerm: string;
     setSearchTerm: (val: string) => void;
-    setIsAiFiltering: (val: boolean) => void;
-    clearAiFilter: () => void;
 }
 
 type SortOption = 'newest' | 'views' | 'rating' | 'comments';
 
-const Home = ({ aiFilterIds, isAiFiltering, searchTerm, setSearchTerm, setIsAiFiltering, clearAiFilter }: HomeProps) => {
+const Home = ({ searchTerm, setSearchTerm }: HomeProps) => {
+    const { isAdmin } = useAuth();
+    const { isUserInSession } = useSession();
     const [cards, setCards] = useState<PromptCardType[]>([]);
     const [loading, setLoading] = useState(true);
     const [sortBy, setSortBy] = useState<SortOption>('newest');
 
+
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session');
+
     useEffect(() => {
-        fetchPrompts();
-    }, []);
+        if (sessionId || isAdmin) {
+            fetchPrompts();
+
+            // Real-time subscription
+            const channel = supabase
+                .channel('library-changes')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'prompts' }, () => {
+                    fetchPrompts();
+                })
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
+        } else {
+            setLoading(false); // If no sessionId, stop loading state
+        }
+    }, [sessionId]); // Removed isAdmin from dependencies to enforce sessionId filtering
 
     const fetchPrompts = async () => {
+        if (!sessionId) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const { data, error } = await supabase
                 .from('prompts')
-                .select('*')
-                .gt('expires_at', new Date().toISOString())
-                .order('created_at', { ascending: false });
+                .select('*, photos(*)')
+                .eq('session_id', sessionId);
 
             if (error) throw error;
             setCards(data || []);
@@ -42,35 +67,70 @@ const Home = ({ aiFilterIds, isAiFiltering, searchTerm, setSearchTerm, setIsAiFi
         }
     };
 
+    if (!sessionId) {
+        return (
+            <div style={{ textAlign: 'center', padding: '100px 0' }}>
+                <div style={{
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '24px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 24px',
+                    color: 'var(--danger)'
+                }}>
+                    <Shield size={40} />
+                </div>
+                <h2 style={{ fontSize: '2.5rem', fontWeight: '800' }}>Access <span style={{ color: 'var(--danger)' }}>Restricted</span></h2>
+                <p style={{ color: 'var(--text-secondary)', marginTop: '16px', fontSize: '1.25rem' }}>
+                    Please use a unique session link to access your specific prompt library.
+                </p>
+                {isAdmin ? (
+                    <div style={{ marginTop: '40px' }}>
+                        <Link to="/dashboard" className="btn-primary">Go to Dashboard</Link>
+                    </div>
+                ) : (
+                    <div style={{ marginTop: '40px' }}>
+                        <Link to="/" className="btn-secondary">Return to Home</Link>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    if (!isUserInSession && !isAdmin && sessionId) {
+        return <JoinSessionForm />;
+    }
+
     const getSortedCards = (cardsToSort: PromptCardType[]) => {
-        const sorted = [...cardsToSort];
+        let filtered = [...cardsToSort];
+
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            filtered = filtered.filter(c =>
+                c.title.toLowerCase().includes(term) ||
+                c.use_case.toLowerCase().includes(term) ||
+                c.prompt.toLowerCase().includes(term) ||
+                c.tags?.some(t => t.toLowerCase().includes(term))
+            );
+        }
+
         switch (sortBy) {
             case 'views':
-                return sorted.sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
+                return filtered.sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
             case 'rating':
-                return sorted.sort((a, b) => (b.avg_rating || 0) - (a.avg_rating || 0));
+                return filtered.sort((a, b) => (b.avg_rating || 0) - (a.avg_rating || 0));
             case 'comments':
-                return sorted.sort((a, b) => (b.comment_count || 0) - (a.comment_count || 0));
+                return filtered.sort((a, b) => (b.comment_count || 0) - (a.comment_count || 0));
             case 'newest':
             default:
-                return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                return filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         }
     };
 
-    const filteredCards = cards.filter(card => {
-        if (isAiFiltering) {
-            return aiFilterIds.includes(card.id);
-        }
-
-        const searchLower = searchTerm.toLowerCase();
-        return (
-            card.title.toLowerCase().includes(searchLower) ||
-            card.use_case.toLowerCase().includes(searchLower) ||
-            card.tags.some(tag => tag.toLowerCase().includes(searchLower))
-        );
-    });
-
-    const finalCards = getSortedCards(filteredCards);
+    const finalCards = getSortedCards(cards);
 
     return (
         <div className="fade-in">
@@ -94,7 +154,6 @@ const Home = ({ aiFilterIds, isAiFiltering, searchTerm, setSearchTerm, setIsAiFi
                         value={searchTerm}
                         onChange={(e) => {
                             setSearchTerm(e.target.value);
-                            setIsAiFiltering(false);
                         }}
                     />
                 </div>
@@ -128,11 +187,7 @@ const Home = ({ aiFilterIds, isAiFiltering, searchTerm, setSearchTerm, setIsAiFi
                     <ChevronDown size={16} style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} />
                 </div>
 
-                {isAiFiltering && (
-                    <button onClick={clearAiFilter} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', borderColor: 'var(--primary)', height: '56px' }}>
-                        <X size={18} /> Clear AI Filter
-                    </button>
-                )}
+
             </div>
 
             {loading ? (
@@ -140,13 +195,8 @@ const Home = ({ aiFilterIds, isAiFiltering, searchTerm, setSearchTerm, setIsAiFi
                     <Loader2 className="animate-spin" size={48} color="var(--primary)" style={{ margin: '0 auto' }} />
                 </div>
             ) : (
-                <>
-                    {isAiFiltering && (
-                        <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-                            <Sparkles size={16} color="var(--primary)" />
-                            <span>AI filtered results based on your chat</span>
-                        </div>
-                    )}
+                <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+
 
                     <div className="grid grid-cols-3">
                         {finalCards.map(card => (
@@ -156,11 +206,10 @@ const Home = ({ aiFilterIds, isAiFiltering, searchTerm, setSearchTerm, setIsAiFi
 
                     {finalCards.length === 0 && (
                         <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-secondary)' }}>
-                            <Sparkles size={48} opacity={0.3} style={{ marginBottom: '16px' }} />
                             <p>No prompts found. Be the first to share one!</p>
                         </div>
                     )}
-                </>
+                </div>
             )}
         </div>
     );

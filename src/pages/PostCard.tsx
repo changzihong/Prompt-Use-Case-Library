@@ -1,21 +1,25 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Upload, Shield, CheckCircle, Loader2, User, Briefcase } from 'lucide-react';
 import { safetyCheck } from '../lib/openai';
 import { supabase } from '../lib/supabase';
 import { useNotifications } from '../context/NotificationContext';
+import { useSession } from '../context/SessionContext';
+import JoinSessionForm from '../components/JoinSessionForm';
 
 const PostCard = () => {
     const navigate = useNavigate();
     const { showToast } = useNotifications();
+    const { isUserInSession, currentUser, sessionId } = useSession();
+    const sessionQuery = sessionId ? `?session=${sessionId}` : '';
     const [loading, setLoading] = useState(false);
     const [safetyStatus, setSafetyStatus] = useState<'idle' | 'checking' | 'safe' | 'blocked'>('idle');
     const [formData, setFormData] = useState({
         title: '',
         useCase: '',
         prompt: '',
-        authorName: '',
-        authorRole: '',
+        authorName: currentUser?.name || '',
+        authorRole: currentUser?.dept || '',
         tags: [] as string[]
     });
     const [issues, setIssues] = useState<string[]>([]);
@@ -30,10 +34,21 @@ const PostCard = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!sessionId) {
+            showToast('You cannot post without an active session.', 'error');
+            return;
+        }
         setLoading(true);
         setSafetyStatus('checking');
 
         try {
+            // 0. Compulsory photo check
+            if (photos.length === 0) {
+                showToast('Please upload at least one proof screenshot of the prompt output.', 'error');
+                setLoading(false);
+                return;
+            }
+
             // 1. Safety Check
             const check = await safetyCheck(formData.title, formData.useCase, formData.prompt);
 
@@ -55,7 +70,8 @@ const PostCard = () => {
                     prompt: formData.prompt,
                     author_name: formData.authorName,
                     author_role: formData.authorRole,
-                    tags: finalTags
+                    tags: finalTags,
+                    session_id: sessionId
                 }
             ]).select();
 
@@ -93,7 +109,7 @@ const PostCard = () => {
             }
 
             setLoading(false);
-            navigate('/');
+            navigate('/library' + sessionQuery);
 
         } catch (error: any) {
             console.error(error);
@@ -103,10 +119,29 @@ const PostCard = () => {
         }
     };
 
+    if (!sessionId) {
+        return (
+            <div style={{ textAlign: 'center', padding: '100px 0' }}>
+                <Shield size={48} color="var(--danger)" style={{ marginBottom: '24px' }} />
+                <h2 style={{ fontSize: '2rem', fontWeight: '800' }}>Post <span style={{ color: 'var(--danger)' }}>Restricted</span></h2>
+                <p style={{ color: 'var(--text-secondary)', marginTop: '16px' }}>
+                    You must join a session to contribute to the prompt library.
+                </p>
+                <div style={{ marginTop: '32px' }}>
+                    <Link to={`/library${sessionQuery}`} className="btn-secondary">Return to Library</Link>
+                </div>
+            </div>
+        );
+    }
+
+    if (!isUserInSession) {
+        return <JoinSessionForm />;
+    }
+
     return (
-        <div className="fade-in" style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <div className="fade-in">
             <section style={{ marginBottom: '40px' }}>
-                <h1 style={{ fontSize: '2.5rem', fontWeight: '700', marginBottom: '8px' }}>Share a <span style={{ color: 'var(--primary)' }}>New Prompt Case</span></h1>
+                <h1 style={{ fontSize: '2.5rem', fontWeight: '800', marginBottom: '12px' }}>Share New <span style={{ color: 'var(--primary)' }}>Prompt Case</span></h1>
                 <p style={{ color: 'var(--text-secondary)' }}>Contribute to the library and help your teammates work smarter.</p>
             </section>
 
@@ -121,8 +156,10 @@ const PostCard = () => {
                             <input
                                 type="text"
                                 required
+                                readOnly={!!currentUser}
                                 placeholder="e.g. John Doe"
                                 className="glass-input"
+                                style={currentUser ? { opacity: 0.7, cursor: 'not-allowed' } : {}}
                                 value={formData.authorName}
                                 onChange={e => setFormData({ ...formData, authorName: e.target.value })}
                             />
@@ -134,8 +171,10 @@ const PostCard = () => {
                             <input
                                 type="text"
                                 required
+                                readOnly={!!currentUser}
                                 placeholder="e.g. Senior Marketing Manager"
                                 className="glass-input"
+                                style={currentUser ? { opacity: 0.7, cursor: 'not-allowed' } : {}}
                                 value={formData.authorRole}
                                 onChange={e => setFormData({ ...formData, authorRole: e.target.value })}
                             />
@@ -172,8 +211,8 @@ const PostCard = () => {
                         <label style={{ fontWeight: '500' }}>The Prompt</label>
                         <textarea
                             required
-                            rows={6}
-                            placeholder="Paste your prompt here..."
+                            rows={8}
+                            placeholder="Paste your high-performance prompt here..."
                             className="glass-input"
                             style={{ resize: 'vertical', fontFamily: 'monospace' }}
                             value={formData.prompt}
@@ -182,75 +221,76 @@ const PostCard = () => {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <label style={{ fontWeight: '500' }}>Proof Photos (Max 2)</label>
+                        <label style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Upload size={18} /> Proof of Quality
+                        </label>
                         <div style={{
                             border: '2px dashed var(--glass-border)',
-                            borderRadius: '12px',
-                            padding: '24px',
+                            borderRadius: '16px',
+                            padding: '32px',
                             textAlign: 'center',
                             background: 'rgba(255,255,255,0.02)',
                             cursor: 'pointer'
                         }} onClick={() => document.getElementById('photo-upload')?.click()}>
-                            <Upload size={32} style={{ marginBottom: '12px', color: 'var(--primary)' }} />
-                            <p style={{ fontSize: '0.875rem' }}>Click to upload screenshots</p>
                             <input
-                                type="file"
                                 id="photo-upload"
+                                type="file"
                                 multiple
                                 accept="image/*"
                                 style={{ display: 'none' }}
                                 onChange={handlePhotoUpload}
                             />
-                        </div>
-                        {photos.length > 0 && (
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                {photos.map((photo, i) => (
-                                    <div key={i} style={{ fontSize: '0.75rem', background: 'var(--glass-bg)', padding: '4px 12px', borderRadius: '8px' }}>{photo.name}</div>
-                                ))}
+                            <div style={{ color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                                <Upload size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                                <p>Upload screenshots showing the prompt output (max 2)</p>
                             </div>
-                        )}
+                            {photos.length > 0 && (
+                                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '16px' }}>
+                                    {photos.map((f, i) => (
+                                        <div key={i} style={{ background: 'var(--primary)', color: 'white', padding: '4px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
+                                            {f.name}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    {safetyStatus !== 'idle' && (
-                        <div style={{
-                            padding: '16px',
-                            borderRadius: '12px',
-                            background: safetyStatus === 'checking' ? 'rgba(99, 102, 241, 0.1)' : safetyStatus === 'blocked' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                            border: `1px solid ${safetyStatus === 'checking' ? 'var(--primary)' : safetyStatus === 'blocked' ? 'var(--danger)' : 'var(--success)'}`,
-                            display: 'flex',
-                            gap: '12px'
-                        }}>
-                            <div>
-                                {safetyStatus === 'checking' && <Loader2 className="animate-spin" size={20} />}
-                                {safetyStatus === 'blocked' && <Shield color="var(--danger)" size={20} />}
-                                {safetyStatus === 'safe' && <CheckCircle color="var(--success)" size={20} />}
+                    <div style={{ marginTop: '20px' }}>
+                        {safetyStatus === 'checking' && (
+                            <div className="glass-card" style={{ padding: '20px', marginBottom: '24px', textAlign: 'center', borderColor: 'var(--primary)' }}>
+                                <Loader2 className="animate-spin" size={24} color="var(--primary)" style={{ margin: '0 auto 12px' }} />
+                                <p>AI is verifying your prompt for safety and quality...</p>
                             </div>
-                            <div>
-                                <p style={{ fontWeight: '600', fontSize: '0.875rem' }}>
-                                    {safetyStatus === 'checking' && 'Running AI Safety Check...'}
-                                    {safetyStatus === 'blocked' && 'Safety Check Blocked'}
-                                    {safetyStatus === 'safe' && 'Safety Check Passed'}
-                                </p>
-                                {safetyStatus === 'blocked' && (
-                                    <ul style={{ fontSize: '0.8125rem', marginTop: '4px', paddingLeft: '16px' }}>
-                                        {issues.map((issue, i) => <li key={i}>{issue}</li>)}
-                                    </ul>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                        )}
 
-                    <div style={{ display: 'flex', gap: '16px', marginTop: '12px' }}>
+                        {safetyStatus === 'blocked' && (
+                            <div className="glass-card" style={{ padding: '20px', marginBottom: '24px', background: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--danger)' }}>
+                                <h4 style={{ color: 'var(--danger)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Shield size={18} /> Safety Check Failed
+                                </h4>
+                                <ul style={{ paddingLeft: '24px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                    {issues.map((issue, i) => <li key={i}>{issue}</li>)}
+                                </ul>
+                            </div>
+                        )}
+
+                        {safetyStatus === 'safe' && (
+                            <div className="glass-card" style={{ padding: '20px', marginBottom: '24px', background: 'rgba(16, 185, 129, 0.1)', borderColor: 'var(--success)' }}>
+                                <p style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <CheckCircle size={18} /> Safety check passed! Tagging with metadata...
+                                </p>
+                            </div>
+                        )}
+
                         <button
                             type="submit"
-                            className="btn-primary"
-                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                             disabled={loading}
+                            className="btn-primary"
+                            style={{ width: '100%', height: '56px', fontSize: '1.1rem', gap: '12px' }}
                         >
-                            {loading ? <Loader2 className="animate-spin" /> : <Shield size={18} />}
-                            {loading ? (safetyStatus === 'checking' ? 'Checking Safety...' : 'Submitting...') : 'Verify & Submit'}
+                            {loading ? <><Loader2 className="animate-spin" size={20} /> Publishing...</> : 'Publish to Library'}
                         </button>
-                        <button type="button" className="btn-secondary" onClick={() => navigate('/')}>Cancel</button>
                     </div>
                 </form>
             </div>

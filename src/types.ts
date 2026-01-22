@@ -23,6 +23,8 @@ export interface PromptCard {
   avg_rating?: number;
   rating_count?: number;
   comment_count: number;
+  session_id?: string;
+  photos?: Photo[];
 }
 
 export interface Photo {
@@ -55,5 +57,44 @@ export interface Report {
   commentId?: string;
   reason: string;
   status: 'pending' | 'resolved';
+  createdAt: string;
+}
+
+export interface SessionUser {
+  id: string;
+  name: string;
+  dept: string;
+  joinedAt: string;
+}
+
+export type FeedItemType = 'text' | 'image' | 'link' | 'announcement';
+
+export interface FeedItem {
+  id: string;
+  sessionId: string;
+  type: FeedItemType;
+  title: string;
+  useCase: string;
+  prompt: string;
+  imageUrl?: string;
+  linkUrl?: string;
+  authorName: string;
+  authorDept: string;
+  createdAt: string;
+  likes: number;
+  ratings: number[];
+  comments: {
+    id: string;
+    authorName: string;
+    text: string;
+    createdAt: string;
+  }[];
+}
+
+export interface SessionData {
+  id: string;
+  adminId: string;
+  users: SessionUser[];
+  feed: FeedItem[];
   createdAt: string;
 }

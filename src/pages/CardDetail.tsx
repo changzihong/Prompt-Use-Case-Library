@@ -2,22 +2,27 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     Star, Eye, MessageSquare, Clock, Copy,
-    ChevronLeft, Share2, Trash2, Loader2, Download, Send
+    ChevronLeft, Share2, Trash2, Loader2, Download, Send, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { supabase } from '../lib/supabase';
+import { useSession } from '../context/SessionContext';
 import type { PromptCard, Photo, Comment } from '../types';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 const CardDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { isAdmin } = useAuth();
     const { showToast, showConfirm } = useNotifications();
+    const { sessionId, currentUser, allSessions } = useSession();
+    const sessionQuery = sessionId ? `?session=${sessionId}` : '';
 
     const [card, setCard] = useState<PromptCard | null>(null);
+    const isOwner = card && allSessions.some(s => s.id === card.session_id);
+    const canDelete = isAdmin && isOwner;
+
     const [photos, setPhotos] = useState<Photo[]>([]);
     const [comments, setComments] = useState<Comment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -25,7 +30,10 @@ const CardDetail = () => {
 
     const [rating, setRating] = useState(0);
     const [hoverRating, setHoverRating] = useState(0);
+    const [hasRated, setHasRated] = useState(false);
     const [commentText, setCommentText] = useState('');
+    const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
     const contentRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -64,9 +72,24 @@ const CardDetail = () => {
                 .order('created_at', { ascending: false });
             setComments(commentData || []);
 
+            // Check if user has already rated
+            if (currentUser) {
+                const { data: ratingData } = await supabase
+                    .from('ratings')
+                    .select('*')
+                    .eq('prompt_id', id)
+                    .eq('user_identifier', currentUser.id)
+                    .single();
+
+                if (ratingData) {
+                    setRating(ratingData.stars);
+                    setHasRated(true);
+                }
+            }
+
         } catch (error) {
             console.error('Error fetching card detail:', error);
-            navigate('/');
+            navigate('/library' + sessionQuery);
         } finally {
             setLoading(false);
         }
@@ -165,26 +188,40 @@ const CardDetail = () => {
             confirmText: 'Delete',
             isDestructive: true,
             onConfirm: async () => {
+                setIsDeleting(true);
                 try {
                     const { error } = await supabase.from('prompts').delete().eq('id', id);
                     if (error) throw error;
                     showToast('Prompt deleted successfully', 'success');
-                    navigate('/');
+                    navigate('/library' + sessionQuery);
                 } catch (error: any) {
                     showToast(error.message || 'Failed to delete prompt', 'error');
+                } finally {
+                    setIsDeleting(false);
                 }
             }
         });
     };
 
     const submitRating = async (stars: number) => {
+        if (hasRated) {
+            showToast('You have already rated this prompt.', 'info');
+            return;
+        }
+        if (!currentUser) {
+            showToast('Please join the session to rate.', 'error');
+            return;
+        }
+
         setRating(stars);
         try {
             const { error } = await supabase.from('ratings').insert({
                 prompt_id: id,
-                stars: stars
+                stars: stars,
+                user_identifier: currentUser.id
             });
             if (error) throw error;
+            setHasRated(true);
             fetchData();
             showToast('Thank you for rating!', 'success');
         } catch (error: any) {
@@ -194,11 +231,16 @@ const CardDetail = () => {
 
     const submitComment = async () => {
         if (!commentText.trim()) return;
+        if (!currentUser && !isAdmin) {
+            showToast('Please join the session to comment.', 'error');
+            return;
+        }
+
         try {
             const { data, error } = await supabase.from('comments').insert({
                 prompt_id: id,
                 text: commentText,
-                author_name: 'Guest'
+                author_name: currentUser?.name || (isAdmin ? 'Admin' : 'Guest')
             }).select();
 
             if (error) throw error;
@@ -226,7 +268,7 @@ const CardDetail = () => {
     return (
         <div className="fade-in">
             <button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/library' + sessionQuery)}
                 style={{ background: 'none', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '32px' }}
             >
                 <ChevronLeft size={20} />
@@ -253,14 +295,15 @@ const CardDetail = () => {
                                     <button onClick={handleDownloadPDF} className="btn-secondary" style={{ padding: '8px' }} title="Download PDF">
                                         <Download size={20} />
                                     </button>
-                                    {isAdmin && (
+                                    {canDelete && (
                                         <button
                                             onClick={handleDelete}
                                             className="btn-secondary"
-                                            style={{ padding: '8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                                            disabled={isDeleting}
+                                            style={{ padding: '8px', color: 'var(--danger)', borderColor: 'rgba(239, 68, 68, 0.2)', opacity: isDeleting ? 0.7 : 1 }}
                                             title="Delete Prompt"
                                         >
-                                            <Trash2 size={20} />
+                                            {isDeleting ? <Loader2 size={20} className="animate-spin" /> : <Trash2 size={20} />}
                                         </button>
                                     )}
                                 </div>
@@ -320,7 +363,12 @@ const CardDetail = () => {
                         <h3 style={{ marginBottom: '20px', fontSize: '1.25rem' }}>Proof Photos</h3>
                         <div className="grid grid-cols-2">
                             {photos.length > 0 ? photos.map(photo => (
-                                <div key={photo.id} className="glass-card" style={{ height: '300px', padding: '0', overflow: 'hidden' }}>
+                                <div
+                                    key={photo.id}
+                                    className="glass-card hover-highlight"
+                                    style={{ height: '300px', padding: '0', overflow: 'hidden', cursor: 'pointer' }}
+                                    onClick={() => setSelectedImageUrl(photo.url)}
+                                >
                                     <img src={photo.url} alt="Proof" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 </div>
                             )) : (
@@ -360,7 +408,7 @@ const CardDetail = () => {
                     <div className="glass-card" style={{ padding: '24px' }}>
                         <h3 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <MessageSquare size={20} />
-                            Comments
+                            Feedback
                         </h3>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '400px', overflowY: 'auto', marginBottom: '20px', paddingRight: '10px' }}>
                             {comments.length > 0 ? comments.map(c => (
@@ -377,13 +425,13 @@ const CardDetail = () => {
                                     </div>
                                 </div>
                             )) : (
-                                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', textAlign: 'center' }}>No comments yet.</p>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', textAlign: 'center' }}>No feedback yet.</p>
                             )}
                         </div>
 
                         <div style={{ position: 'relative' }}>
                             <textarea
-                                placeholder="Add a comment..."
+                                placeholder="Share your feedback..."
                                 className="glass-input"
                                 style={{ width: '100%', minHeight: '80px', paddingRight: '48px', fontSize: '0.875rem' }}
                                 value={commentText}
@@ -400,6 +448,55 @@ const CardDetail = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Image Preview Modal */}
+            {selectedImageUrl && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        background: 'rgba(0,0,0,0.9)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                        padding: '40px',
+                        backdropFilter: 'blur(10px)'
+                    }}
+                    onClick={() => setSelectedImageUrl(null)}
+                >
+                    <button
+                        style={{
+                            position: 'absolute',
+                            top: '20px',
+                            right: '25px',
+                            background: 'none',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            opacity: 0.7
+                        }}
+                        onClick={() => setSelectedImageUrl(null)}
+                    >
+                        <X size={32} />
+                    </button>
+                    <img
+                        src={selectedImageUrl}
+                        alt="Full Preview"
+                        style={{
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain',
+                            borderRadius: '12px',
+                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+                            animation: 'scaleIn 0.3s ease-out'
+                        }}
+                    />
+                </div>
+            )}
         </div>
     );
 };

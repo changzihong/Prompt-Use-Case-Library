@@ -62,7 +62,9 @@ CREATE TABLE IF NOT EXISTS public.ratings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   prompt_id UUID REFERENCES public.prompts(id) ON DELETE CASCADE,
   stars INTEGER CHECK (stars >= 1 AND stars <= 5),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  user_identifier TEXT, -- Can be session_user_id or name+dept
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(prompt_id, user_identifier)
 );
 
 -- 4. RLS

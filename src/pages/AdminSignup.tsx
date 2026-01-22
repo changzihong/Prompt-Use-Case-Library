@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Lock, Mail, Loader2, AlertCircle, UserPlus, ShieldCheck, Check } from 'lucide-react';
+import { Lock, Mail, Loader2, AlertCircle, UserPlus, ShieldCheck, Check, Eye, EyeOff } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 
 const AdminSignup = () => {
@@ -11,6 +11,8 @@ const AdminSignup = () => {
     const [agreeTerms, setAgreeTerms] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const navigate = useNavigate();
     const { showToast } = useNotifications();
 
@@ -110,14 +112,36 @@ const AdminSignup = () => {
                         <div style={{ position: 'relative' }}>
                             <Lock size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
                             <input
-                                type="password"
+                                type={showPassword ? "text" : "password"}
                                 required
                                 className="glass-input"
-                                style={{ width: '100%', paddingLeft: '40px' }}
+                                style={{ width: '100%', paddingLeft: '40px', paddingRight: '40px' }}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="••••••••"
                             />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                style={{
+                                    position: 'absolute',
+                                    right: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--text-secondary)',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    transition: 'color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.color = 'var(--primary)'}
+                                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
                         </div>
                     </div>
 
@@ -126,14 +150,36 @@ const AdminSignup = () => {
                         <div style={{ position: 'relative' }}>
                             <Check size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
                             <input
-                                type="password"
+                                type={showConfirmPassword ? "text" : "password"}
                                 required
                                 className="glass-input"
-                                style={{ width: '100%', paddingLeft: '40px' }}
+                                style={{ width: '100%', paddingLeft: '40px', paddingRight: '40px' }}
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 placeholder="••••••••"
                             />
+                            <button
+                                type="button"
+                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                style={{
+                                    position: 'absolute',
+                                    right: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--text-secondary)',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    transition: 'color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.color = 'var(--primary)'}
+                                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                            >
+                                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
                         </div>
                     </div>
 
@@ -146,7 +192,7 @@ const AdminSignup = () => {
                             style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                         />
                         <label htmlFor="terms" style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                            I agree to the <span style={{ color: 'var(--primary)', cursor: 'pointer' }}>Terms and Conditions</span>
+                            I agree to the <Link to="/terms" style={{ color: 'var(--primary)', cursor: 'pointer', textDecoration: 'none' }}>Terms and Conditions</Link>
                         </label>
                     </div>
 
